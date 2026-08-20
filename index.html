@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>  
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dragon Gold Clicker</title> 
+    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>                                                                      
+    <style>    
+        body { margin: 0; padding: 0; background: url('bg.png') no-repeat center center fixed; background-size: cover; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; user-select: none; overflow: hidden; }
+        .header { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(0, 0, 0, 0.7); }
+        .balance-box { font-size: 20px; font-weight: bold; color: #ffcc00; }
+        .btn-withdraw { background: #0099ff; color: white; border: none; padding: 8px 20px; font-size: 16px; font-weight: bold; border-radius: 20px; cursor: pointer; }
+        .click-container { display: flex; justify-content: center; align-items: center; height: calc(100vh - 150px); }
+        .dragon-btn { width: 250px; height: 250px; cursor: pointer; transition: transform 0.1s ease; -webkit-tap-highlight-color: transparent; }
+        .dragon-btn:active { transform: scale(0.95); }
+        #stories-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; z-index: 99999; }
+        #story-content { position: absolute; top: 15px; right: 15px; font-size: 18px; font-weight: bold; color: white; }
+        #withdraw-drawer { position: fixed; bottom: -100%; left: 0; width: 100%; background: #1a1a1a; border-top-left-radius: 20px; border-top-right-radius: 20px; transition: bottom 0.3s ease; z-index: 10000; padding: 20px; box-sizing: border-box; }
+        #drawer-backdrop { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999; }
+        .drawer-btn { background: #ffcc00; color: black; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; text-align: center; }
+        .drawer-btn-disabled { background: #555; color: #aaa; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: not-allowed; width: 100%; }
+        .drawer-action-btn { background: #0099ff; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; width: 100%; }
+        .wallet-box { background: #2a2a2a; padding: 15px; border-radius: 10px; margin-bottom: 10px; font-family: monospace; font-size: 16px; word-break: break-all; }
+        .btn-unlink { background: #ff4444; color: white; border: none; padding: 6px 15px; font-size: 12px; border-radius: 6px; cursor: pointer; margin-bottom: 25px; }
+        .btn-error { background: #ff4444 !important; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="balance-box">Баланс: <span id="balance">0.001</span> USDT</div>
+        <button class="btn-withdraw" onclick="toggleDrawer(true)">Вывод</button>
+    </div>
+
+    <div class="click-container">
+        <img src="logo.png" class="dragon-btn" onclick="showAd()" alt="Dragon">
+    </div>
+
+    <div id="stories-screen">
+        <div id="story-content">Идет реклама: 20 сек.</div>
+    </div>
+
+    <div id="drawer-backdrop" onclick="toggleDrawer(false)"></div>
+    <div id="withdraw-drawer">
+        <h3>Вывод средств</h3>
+        <div id="drawer-content"></div>
+    </div>
+
+    <script>
+        let balance = 0.001;
+        let walletAddress = null;
+        const DUMMY_WALLET = "UQar...3g8X";
+
+        let audioCtx = null;
+        let biquadFilter = null;
+        let gainNode = null;
+        let windInterval = null;
+
+        function updateDisplay() { 
+            document.getElementById('balance').innerText = balance.toFixed(4); 
+        }
+
+        function initWind() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            const bufferSize = 2 * audioCtx.sampleRate;
+            const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            let lastOut = 0.0;
+            for (let i = 0; i < bufferSize; i++) {
+                const white = Math.random() * 2 - 1;
+                output[i] = (lastOut + (0.02 * white)) / 1.02;
+                lastOut = output[i];
+                output[i] *= 3.5;
+            }
+
+            const noiseNode = audioCtx.createBufferSource();
+            noiseNode.buffer = noiseBuffer;
+            noiseNode.loop = true;
+
+            biquadFilter = audioCtx.createBiquadFilter();
+            biquadFilter.type = "lowpass";
+            biquadFilter.frequency.setValueAtTime(250, audioCtx.currentTime);
+
+            gainNode = audioCtx.createGain();
+            gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+
+            noiseNode.connect(biquadFilter);
+            biquadFilter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            noiseNode.start();
+
+            windInterval = setInterval(() => {
+                if (audioCtx && audioCtx.state === "running") {
+                    const targetFreq = 120 + Math.random() * 200;
+                    biquadFilter.frequency.exponentialRampToValueAtTime(targetFreq, audioCtx.currentTime + 3);
+                }
+            }, 3000);
+        }
+
+        function playWind() {
+            initWind();
+            if (audioCtx.state === "suspended") {
+                audioCtx.resume();
+            }
+            gainNode.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 1);
+        }
+
+        function pauseWind() {
+            if (gainNode && audioCtx) {
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+                setTimeout(() => {
+                    if (audioCtx.state === "running") audioCtx.suspend();
+                }, 400);
+            }
+        }
+
+        function showAd() {
+            const AdController = window.Adsgram.init({ blockId: "41755" });
+    AdController.show().then((result) => {
+        balance += 0.001;
+        updateDisplay();
+    }).catch((result) => {
+        console.log("реклама закрыта");
+    });
+    
+
+        }
+
+        function toggleDrawer(open) {
+            document.getElementById('withdraw-drawer').style.bottom = open ? '0' : '-100%';
+            document.getElementById('drawer-backdrop').style.display = open ? 'block' : 'none';
+            if (open) renderDrawer();
+        }
+
+        function renderDrawer() {
+            const content = document.getElementById('drawer-content');
+            if (!walletAddress) {
+                content.innerHTML = `
+                    <button class="drawer-btn" onclick="linkWallet()">Привязать кошелёк</button>
+                    <button class="drawer-btn-disabled">Вывести USDT</button>
+                `;
+            } else {
+                content.innerHTML = `
+                    <div class="wallet-box">${walletAddress}</div>
+                    <button class="btn-unlink" onclick="unlinkWallet()">Отвязать кошелёк</button>
+                    <button id="withdraw-submit-btn" class="drawer-action-btn" onclick="processWithdraw()">Вывести USDT</button>
+                `;
+            }
+        }
+
+        function linkWallet() {
+            walletAddress = DUMMY_WALLET;
+            renderDrawer();
+        }
+
+        function unlinkWallet() {
+            walletAddress = null;
+            renderDrawer();
+        }
+
+        function processWithdraw() {
+            const btn = document.getElementById('withdraw-submit-btn');
+            if (balance < 2.0) {
+                btn.classList.add('btn-error');
+                setTimeout(() => { btn.classList.remove('btn-error'); }, 1000);
+            }
+        }
+
+        updateDisplay();
+    </script>
+</body>
+</html>
