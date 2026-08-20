@@ -121,6 +121,8 @@
     AdController.show().then((result) => {
         balance += 0.001;
         updateDisplay();
+       localStorage.setItem("dragon_balance", balance);
+
     }).catch((result) => {
         console.log("реклама закрыта");
     });
@@ -169,6 +171,8 @@
         }
 
         updateDisplay();
+        localStorage.setItem("dragon_balance", balance);
+
     </script>
 </body>
 </html>
